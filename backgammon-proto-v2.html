@@ -1839,9 +1839,9 @@ function setupDataChannelHandlers(channel) {
       if (msg.type === 'state') {
         applyingRemoteState = true;
         applyStateSnapshotObject(msg.state);
-        applyingRemoteState = false;
         selectedOrigin = null;
         renderBoard();
+        applyingRemoteState = false;
         if (engine.pendingDice.length > 0) attachDieHandlers();
       }
     } catch (e) {
