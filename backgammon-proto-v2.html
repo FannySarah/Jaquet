@@ -1,0 +1,2005 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backgammon Personnalisé — Prototype</title>
+<style>
+  :root {
+    --wood-dark: #3d2817;
+    --wood-mid: #6b4a2f;
+    --point-light: #d9c4a3;
+    --point-dark: #8a5a3a;
+    --point-closed-white: #7a9b6e;
+    --point-closed-black: #4a3b52;
+    --board-bg: #2a1c10;
+    --cream: #f4ead9;
+    --accent: #b8863f;
+    --white-piece: #f5efe3;
+    --black-piece: #1c1410;
+    --ok: #5c7a4f;
+    --danger: #a3462f;
+    --info: #4a7a9b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--board-bg);
+    color: var(--cream);
+    font-family: 'Georgia', 'Times New Roman', serif;
+    padding: 14px;
+    min-height: 100vh;
+  }
+  h1 {
+    text-align: center;
+    font-size: 1.25rem;
+    letter-spacing: 0.04em;
+    font-weight: 400;
+    margin: 0 0 2px;
+    color: var(--accent);
+  }
+  .subtitle {
+    text-align: center;
+    font-size: 0.78rem;
+    opacity: 0.65;
+    margin-bottom: 14px;
+    font-style: italic;
+  }
+
+  .status-bar {
+    max-width: 760px;
+    margin: 0 auto 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(0,0,0,0.3);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 0.85rem;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .turn-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: bold;
+  }
+  .turn-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 2px solid rgba(0,0,0,0.3);
+  }
+  .turn-dot.white { background: var(--white-piece); }
+  .turn-dot.black { background: var(--black-piece); }
+
+  .dice-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .die {
+    width: 34px;
+    height: 34px;
+    background: var(--cream);
+    color: #222;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.1rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  }
+  .die.used { opacity: 0.35; text-decoration: line-through; }
+  .die.transferred { border: 2px solid var(--info); }
+
+  button {
+    font-family: inherit;
+    background: var(--wood-mid);
+    color: var(--cream);
+    border: 1px solid var(--accent);
+    padding: 8px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    transition: background 0.15s;
+  }
+  button:hover:not(:disabled) { background: var(--accent); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .board-wrap {
+    max-width: 760px;
+    margin: 0 auto;
+    background: var(--wood-dark);
+    border: 6px solid var(--wood-mid);
+    border-radius: 8px;
+    padding: 14px;
+    position: relative;
+  }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 2px;
+    background: var(--wood-mid);
+    padding: 8px;
+    border-radius: 4px;
+  }
+  .point {
+    position: relative;
+    height: 175px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 4px 0;
+    transition: filter 0.15s;
+  }
+  .point::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--point-light);
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    z-index: 0;
+  }
+  .point.dark::before { background: var(--point-dark); }
+  .point.bottom::before {
+    clip-path: polygon(0 100%, 100% 100%, 50% 0);
+  }
+  .point.top { flex-direction: column; }
+  .point.bottom {
+    align-items: center;
+    justify-content: flex-end;
+  }
+  .home-zone-strip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    z-index: 6;
+    pointer-events: none;
+  }
+  .point.home-white .home-zone-strip {
+    background: linear-gradient(90deg, #f5efe3, #e8ddc8);
+    border: 1px solid rgba(0,0,0,0.35);
+  }
+  .point.home-black .home-zone-strip {
+    background: linear-gradient(90deg, #2a2018, #1c1410);
+    border: 1px solid rgba(255,255,255,0.25);
+  }
+  .point.top .home-zone-strip { top: 0; }
+  .point.bottom .home-zone-strip { bottom: 0; }
+  .point.closed-white { filter: saturate(0.4) brightness(0.85); }
+  .point.closed-white::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(245,239,227,0.12);
+    pointer-events: none;
+  }
+  .point.closed-black::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(28,20,16,0.18);
+    pointer-events: none;
+  }
+  .point.selectable {
+    outline: 2px solid var(--ok);
+    outline-offset: -2px;
+  }
+  .point.origin-selected {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
+  .point-label {
+    position: absolute;
+    font-size: 0.58rem;
+    color: rgba(0,0,0,0.4);
+    font-weight: bold;
+    z-index: 3;
+  }
+  .point.top .point-label { top: 2px; }
+  .point.bottom .point-label { bottom: 2px; }
+  .checkers {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    position: relative;
+    z-index: 2;
+  }
+  .point.bottom .checkers { flex-direction: column-reverse; }
+  .checker-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .checker-group.first-turn-piece {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 5;
+  }
+  .point.top .checker-group.first-turn-piece.at-tip { bottom: 6px; }
+  .point.top .checker-group.first-turn-piece.at-base { top: 16px; }
+  .point.bottom .checker-group.first-turn-piece.at-tip { top: 6px; }
+  .point.bottom .checker-group.first-turn-piece.at-base { bottom: 16px; }
+  .checker-group.first-turn-piece .checker {
+    box-shadow: 0 0 0 2px var(--accent), 0 2px 3px rgba(0,0,0,0.4);
+  }
+  .checker {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid rgba(0,0,0,0.3);
+    box-shadow: 0 2px 3px rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    font-weight: bold;
+  }
+  .checker:first-child { margin-top: 0; }
+  .checker.white { background: var(--white-piece); color: #333; }
+  .checker.black { background: var(--black-piece); color: #ddd; border-color: rgba(255,255,255,0.2); }
+  .checker.pip-shape {
+    clip-path: none;
+  }
+  .point:hover:not(.disabled) { filter: brightness(1.12); }
+
+  .stack-count-badge {
+    position: absolute;
+    background: rgba(0,0,0,0.65);
+    color: white;
+    font-size: 0.55rem;
+    border-radius: 8px;
+    padding: 1px 5px;
+    z-index: 4;
+    font-weight: bold;
+  }
+  .point.top .stack-count-badge { top: 14px; }
+  .point.bottom .stack-count-badge { bottom: 14px; }
+
+  .bear-off-trays {
+    max-width: 760px;
+    margin: 10px auto 0;
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .tray {
+    flex: 1;
+    background: rgba(0,0,0,0.25);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    text-align: center;
+  }
+  .tray-count { font-size: 1.1rem; font-weight: bold; color: var(--accent); }
+
+  .message-box {
+    max-width: 760px;
+    margin: 10px auto 0;
+    background: rgba(0,0,0,0.3);
+    border-left: 3px solid var(--info);
+    border-radius: 4px;
+    padding: 8px 14px;
+    font-size: 0.82rem;
+    min-height: 20px;
+  }
+  .message-box.warning { border-left-color: var(--danger); }
+  .message-box.success { border-left-color: var(--ok); }
+
+  .controls-row {
+    max-width: 760px;
+    margin: 10px auto 0;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .log-panel {
+    max-width: 760px;
+    margin: 10px auto 0;
+    background: rgba(0,0,0,0.25);
+    border-radius: 6px;
+    padding: 8px 14px;
+    font-size: 0.72rem;
+    max-height: 110px;
+    overflow-y: auto;
+    line-height: 1.5;
+    opacity: 0.8;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal-overlay.visible { display: flex; }
+  .modal-box {
+    background: var(--wood-dark);
+    border: 2px solid var(--accent);
+    border-radius: 10px;
+    padding: 22px;
+    max-width: 340px;
+    text-align: center;
+  }
+  .modal-box h3 { margin-top: 0; color: var(--accent); font-weight: 400; }
+  .modal-choices {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .modal-choices button {
+    width: 42px;
+    height: 42px;
+    font-size: 1.1rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>Backgammon Personnalisé</h1>
+<div class="subtitle">Prototype de test des règles — 2 joueurs, même écran ou à distance</div>
+
+<div style="max-width:760px; margin:0 auto 12px; text-align:center;">
+  <button id="btn-toggle-remote-panel" style="width:auto; padding:8px 16px;">🌐 Jouer à distance</button>
+  <span id="remote-status" style="margin-left:10px; font-size:0.8rem; opacity:0.8;"></span>
+</div>
+
+<div id="remote-panel" style="display:none; max-width:760px; margin:0 auto 14px; background:rgba(0,0,0,0.3); border-radius:8px; padding:14px; font-size:0.85rem;">
+  <div id="remote-panel-choice">
+    <p style="margin-top:0;">Comment veux-tu te connecter ?</p>
+    <button id="btn-remote-host" style="width:auto; padding:8px 16px; margin-right:8px;">Créer une partie (héberger)</button>
+    <button id="btn-remote-join" style="width:auto; padding:8px 16px;">Rejoindre une partie</button>
+  </div>
+
+  <div id="remote-panel-host" style="display:none;">
+    <p style="margin-top:0;">1. Copie ce code et envoie-le à l'autre joueur :</p>
+    <textarea id="host-offer-code" readonly rows="4" style="width:100%; font-family:monospace; font-size:0.7rem; box-sizing:border-box;"></textarea>
+    <button id="btn-copy-offer" style="width:auto; padding:6px 12px; margin-top:6px;">📋 Copier le code</button>
+    <p>2. Colle ici le code de réponse qu'il t'envoie en retour :</p>
+    <textarea id="host-answer-input" rows="4" placeholder="Colle le code de réponse ici..." style="width:100%; font-family:monospace; font-size:0.7rem; box-sizing:border-box;"></textarea>
+    <button id="btn-connect-with-answer" style="width:auto; padding:8px 16px; margin-top:6px;">Se connecter</button>
+  </div>
+
+  <div id="remote-panel-join" style="display:none;">
+    <p style="margin-top:0;">1. Colle ici le code reçu de l'hôte :</p>
+    <textarea id="join-offer-input" rows="4" placeholder="Colle le code de l'hôte ici..." style="width:100%; font-family:monospace; font-size:0.7rem; box-sizing:border-box;"></textarea>
+    <button id="btn-generate-answer" style="width:auto; padding:8px 16px; margin-top:6px;">Générer ma réponse</button>
+    <div id="join-answer-section" style="display:none;">
+      <p>2. Copie ce code et renvoie-le à l'hôte :</p>
+      <textarea id="join-answer-code" readonly rows="4" style="width:100%; font-family:monospace; font-size:0.7rem; box-sizing:border-box;"></textarea>
+      <button id="btn-copy-answer" style="width:auto; padding:6px 12px; margin-top:6px;">📋 Copier le code</button>
+      <p style="opacity:0.7; font-size:0.75rem;">La connexion s'établira automatiquement une fois que l'hôte aura utilisé ce code.</p>
+    </div>
+  </div>
+
+  <button id="btn-remote-cancel" style="width:auto; padding:6px 12px; margin-top:10px; opacity:0.7;">Annuler / fermer</button>
+</div>
+
+<div class="status-bar">
+  <div class="turn-indicator">
+    <div class="turn-dot" id="turn-dot"></div>
+    <span id="turn-text">Tour : Blanc</span>
+    <span id="roll-counter" style="opacity:0.6; font-size:0.75rem; margin-left:6px;"></span>
+  </div>
+  <div class="dice-area" id="dice-area"></div>
+  <button id="btn-roll">Lancer les dés</button>
+</div>
+
+<div class="board-wrap">
+  <div class="board" id="board"></div>
+</div>
+
+<div style="max-width:760px; margin:6px auto 0; display:flex; justify-content:center; gap:16px; font-size:0.72rem; opacity:0.8;">
+  <span><span style="display:inline-block; width:14px; height:6px; background:linear-gradient(90deg,#f5efe3,#e8ddc8); border:1px solid rgba(0,0,0,0.35); border-radius:2px; margin-right:4px; vertical-align:middle;"></span>Maison Blanc (1–6)</span>
+  <span><span style="display:inline-block; width:14px; height:6px; background:linear-gradient(90deg,#2a2018,#1c1410); border:1px solid rgba(255,255,255,0.25); border-radius:2px; margin-right:4px; vertical-align:middle;"></span>Maison Noir (13–18)</span>
+</div>
+
+<div class="bear-off-trays">
+  <div class="tray" id="white-off-tray" style="cursor:pointer;">
+    <div class="tray-count" id="white-off">0</div>
+    <div>Blancs sortis / 15</div>
+  </div>
+  <div class="tray" id="black-off-tray" style="cursor:pointer;">
+    <div class="tray-count" id="black-off">0</div>
+    <div>Noirs sortis / 15</div>
+  </div>
+</div>
+
+<div class="message-box" id="message-box">Bienvenue. Blanc commence — clique sur "Lancer les dés".</div>
+
+<div class="controls-row">
+  <button id="btn-undo-selection">Annuler la sélection</button>
+  <button id="btn-undo-move">Annuler le dernier coup</button>
+  <button id="btn-diagnostic">Voir l'état complet du plateau</button>
+  <button id="btn-force-pass">Je suis bloqué(e), passer le tour</button>
+  <button id="btn-new-game">Nouvelle partie</button>
+</div>
+
+<div class="log-panel" id="log-panel"></div>
+<div class="log-panel" id="diagnostic-panel" style="display:none; white-space: pre-wrap; font-family: monospace;"></div>
+<button id="btn-copy-diagnostic" style="display:none; margin: 8px auto; width: auto; padding: 8px 16px;">📋 Copier l'état du plateau</button>
+
+<div class="modal-overlay" id="modal-bonus">
+  <div class="modal-box">
+    <h3>Bonus 4-3 !</h3>
+    <p>Choisis la valeur du double à jouer 4 fois :</p>
+    <div class="modal-choices" id="bonus-choices"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal-box">
+    <h3 id="modal-confirm-title">Confirmer</h3>
+    <p id="modal-confirm-text"></p>
+    <div class="modal-choices">
+      <button id="modal-confirm-yes" style="width:auto; padding:8px 20px;">Oui</button>
+      <button id="modal-confirm-no" style="width:auto; padding:8px 20px;">Annuler</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// MOTEUR DE JEU - Backgammon personnalisé
+// ============================================================
+// Points numérotés 1-24.
+// BLANC : part de 24, avance vers 1 (zone finale = camp = 6..1)
+// NOIR  : part de 12, avance vers 13 (zone finale = camp = 18..13)
+//
+// Règles spéciales :
+// - Pas de capture, jamais
+// - Point avec >=1 pion adverse = fermé
+// - Mur de 6 consécutifs interdit sauf conditions (1+2 blanc / 13+14 noir)
+// - Coup injouable => transféré à l'adversaire
+// - Premier tour: un seul pion peut bouger
+// - Doubles classiques: valeur x4 + complément à 7 x4
+// - Combo 4-3: 4 + 3 + double au choix x4 + tour complet supplémentaire
+//   (au premier tour, bonus actif seulement si le 7 amène direct dans la zone)
+// ============================================================
+
+class BackgammonEngine {
+  constructor() {
+    this.points = Array.from({ length: 24 }, () => ({ color: null, count: 0 }));
+    // Point 24 (index 23): 15 blancs. Point 12 (index 11): 15 noirs.
+    this.points[23] = { color: 'white', count: 15 };
+    this.points[11] = { color: 'black', count: 15 };
+
+    this.borneOff = { white: 0, black: 0 };
+    this.currentPlayer = 'white'; // blanc commence, ajustable
+    this.isFirstTurn = { white: true, black: true };
+    this.pendingDice = []; // valeurs de dés restant à jouer ce tour
+    this.transferredDice = []; // valeurs récupérées de l'adversaire à jouer EN PLUS
+    this.log = [];
+    this.gameOver = false;
+    this.winner = null;
+    this.extraTurnPending = false; // pour le bonus 4-3 (tour complet supplémentaire)
+    this.pendingComplement = null; // complément à 7 en attente de révélation
+    this.firstTurnPiecePos = { white: null, black: null }; // position actuelle du pion spécial pendant la phase d'entrée en zone
+    this.rollCounter = 0; // incrémenté à chaque nouveau lancer de dés (pas lors d'une révélation de complément)
+    this.history = []; // pile de snapshots pour annuler des coups dans le lancer en cours
+  }
+
+  // Capture un instantané complet de l'état du jeu (pour permettre l'annulation).
+  snapshot() {
+    return JSON.stringify({
+      points: this.points,
+      borneOff: this.borneOff,
+      currentPlayer: this.currentPlayer,
+      isFirstTurn: this.isFirstTurn,
+      pendingDice: this.pendingDice,
+      transferredDice: this.transferredDice,
+      gameOver: this.gameOver,
+      winner: this.winner,
+      extraTurnPending: this.extraTurnPending,
+      pendingComplement: this.pendingComplement,
+      firstTurnPiecePos: this.firstTurnPiecePos,
+      rollCounter: this.rollCounter
+    });
+  }
+
+  // Empile l'état actuel avant d'appliquer un coup (à appeler juste AVANT applyMove).
+  pushHistory() {
+    this.history.push(this.snapshot());
+  }
+
+  // Vide l'historique (à appeler à chaque nouveau lancer de dés : on ne peut annuler
+  // que dans la limite du lancer en cours, pas revenir sur le tour de l'adversaire).
+  clearHistory() {
+    this.history = [];
+  }
+
+  canUndo() {
+    return this.history.length > 0;
+  }
+
+  // Restaure l'état précédent depuis la pile. Retourne true si une annulation a eu lieu.
+  undo() {
+    if (this.history.length === 0) return false;
+    const prev = JSON.parse(this.history.pop());
+    this.points = prev.points;
+    this.borneOff = prev.borneOff;
+    this.currentPlayer = prev.currentPlayer;
+    this.isFirstTurn = prev.isFirstTurn;
+    this.pendingDice = prev.pendingDice;
+    this.transferredDice = prev.transferredDice;
+    this.gameOver = prev.gameOver;
+    this.winner = prev.winner;
+    this.extraTurnPending = prev.extraTurnPending;
+    this.pendingComplement = prev.pendingComplement;
+    this.firstTurnPiecePos = prev.firstTurnPiecePos;
+    this.rollCounter = prev.rollCounter;
+    this.log.push('--- Coup annulé ---');
+    return true;
+  }
+
+  // Appelé par l'UI quand tous les dés actuellement visibles ont été joués.
+  // Si un complément à 7 est en attente (double après le premier tour), on l'ajoute maintenant.
+  revealComplementIfNeeded() {
+    if (this.pendingComplement !== null) {
+      const c = this.pendingComplement;
+      this.pendingComplement = null;
+      // IMPORTANT : remplacer pendingDice, ne pas y ajouter. À ce stade, tous les dés
+      // précédents (la valeur x4) ont déjà été joués et doivent disparaître complètement,
+      // sinon ils restent dans le tableau et redeviennent jouables une fois usedDiceIndices réinitialisé.
+      this.pendingDice = [c, c, c, c];
+      this.log.push(`Complément à 7 révélé : ${c} x4`);
+      return true;
+    }
+    return false;
+  }
+
+  opponent(color) {
+    return color === 'white' ? 'black' : 'white';
+  }
+
+  // Direction de déplacement : blanc décrémente (24->1), noir avance en boucle 12->24->1->... non,
+  // en fait noir va 12,11,...,7,6,5,4,3,2,1,24,23,...,13 ? Non : d'après les règles,
+  // Noir part de 12 et va vers 11,10,9,8,7,6... pour entrer en 18,17,16,15,14,13.
+  // Donc noir suit la séquence : 12,11,10,9,8,7,6,5,4,3,2,1,24,23,22,21,20,19,18,17,16,15,14,13
+  // Blanc suit : 24,23,22,...,1
+  // On modélise avec une fonction de "distance parcourue" -> point.
+
+  getPathIndex(color, point) {
+    // Retourne la position (0-indexée) du point dans le chemin du joueur (0 = point de départ)
+    if (color === 'white') {
+      // 24,23,...,1 => path index = 24 - point
+      return 24 - point;
+    } else {
+      // 12,11,...,1,24,23,...,13 => path index cycle de longueur 24
+      // point 12 -> 0, 11 -> 1, ... 1 -> 11, 24 -> 12, 23 -> 13, ..., 13 -> 23
+      if (point <= 12) {
+        return 12 - point;
+      } else {
+        return 12 + (24 - point);
+      }
+    }
+  }
+
+  getPointFromPathIndex(color, pathIndex) {
+    if (color === 'white') {
+      return 24 - pathIndex;
+    } else {
+      if (pathIndex <= 11) {
+        return 12 - pathIndex;
+      } else {
+        return 24 - (pathIndex - 12);
+      }
+    }
+  }
+
+  // Zone finale (camp) : pour blanc, points 1-6 ; pour noir, points 13-18
+  isInHomeZone(color, point) {
+    if (color === 'white') return point >= 1 && point <= 6;
+    return point >= 13 && point <= 18;
+  }
+
+  // Vérifie si tous les pions d'une couleur sont dans la zone finale (pour bear off)
+  allInHome(color) {
+    for (let p = 1; p <= 24; p++) {
+      const idx = p - 1;
+      if (this.points[idx].color === color && this.points[idx].count > 0) {
+        if (!this.isInHomeZone(color, p)) return false;
+      }
+    }
+    return true;
+  }
+
+  totalOnBoard(color) {
+    return this.points.reduce((sum, pt) => sum + (pt.color === color ? pt.count : 0), 0);
+  }
+
+  // Un point est fermé pour `color` si un pion adverse s'y trouve (>=1)
+  isPointClosedFor(color, point) {
+    const idx = point - 1;
+    const pt = this.points[idx];
+    return pt.color !== null && pt.color !== color && pt.count >= 1;
+  }
+
+  // Vérifie si placer un pion sur `point` créerait un mur illégal de 6 consécutifs
+  wouldCreateIllegalWall(color, point) {
+    // simulate
+    const idx = point - 1;
+    const before = { ...this.points[idx] };
+    if (this.points[idx].color === null || this.points[idx].color === color) {
+      this.points[idx] = { color, count: (this.points[idx].color === color ? this.points[idx].count : 0) + 1 };
+    } else {
+      // ne devrait pas arriver (point fermé), mais on ne simule pas dans ce cas
+      return false;
+    }
+
+    const hasWall = this.hasIllegalWall(color);
+
+    // restore
+    this.points[idx] = before;
+
+    return hasWall;
+  }
+
+  hasIllegalWall(color) {
+    // cherche 6 points consécutifs (1-24, avec wraparound? Non, le plateau est linéaire 1-24)
+    // On considère les points consécutifs numériquement 1..24 (pas le chemin du joueur)
+    for (let start = 1; start <= 19; start++) {
+      let allOwned = true;
+      for (let k = 0; k < 6; k++) {
+        const idx = start + k - 1;
+        if (this.points[idx].color !== color || this.points[idx].count < 1) {
+          allOwned = false;
+          break;
+        }
+      }
+      if (allOwned) {
+        // mur trouvé de start à start+5
+        const exception = color === 'white'
+          ? (this.points[0].color === 'white' && this.points[0].count >= 1 && this.points[1].color === 'white' && this.points[1].count >= 1)
+          : (this.points[12].color === 'black' && this.points[12].count >= 1 && this.points[13].color === 'black' && this.points[13].count >= 1);
+        if (!exception) return true;
+      }
+    }
+    return false;
+  }
+
+  // ------------------------------------------------------------
+  // Lancer de dés et construction de la liste de mouvements à jouer
+  // ------------------------------------------------------------
+  rollDice() {
+    this.rollCounter += 1;
+    const d1 = 1 + Math.floor(Math.random() * 6);
+    const d2 = 1 + Math.floor(Math.random() * 6);
+    return this.processRoll(d1, d2);
+  }
+
+  processRoll(d1, d2) {
+    const color = this.currentPlayer;
+    const inSpecialPhase = this.isFirstTurn[color]; // phase "entrée en zone" en cours
+    // Position actuelle du pion spécial : soit sa position trackée, soit le point de départ si jamais bougé
+    const startPoint = color === 'white' ? 24 : 12;
+    const currentSpecialPos = this.firstTurnPiecePos[color] !== null ? this.firstTurnPiecePos[color] : startPoint;
+
+    let dice = [];
+    let bonusDoubleChoice = null; // sera demandé à l'UI si combo 4-3
+    let grantsExtraTurn = false;
+
+    const isDouble = d1 === d2;
+    const isFourThree = (d1 === 4 && d2 === 3) || (d1 === 3 && d2 === 4);
+
+    if (isDouble) {
+      const val = d1;
+      if (inSpecialPhase) {
+        // Phase spéciale : valeur x4 toujours affichée d'abord. Complément x4 en bonus SEULEMENT
+        // si ce déplacement de val*4 amène le pion spécial (depuis sa position ACTUELLE) dans sa zone finale.
+        // Le complément est révélé après coup (une fois les 4 premiers joués), comme en phase normale.
+        const pathIdx = this.getPathIndex(color, currentSpecialPos) + (val * 4);
+        let entersZone = false;
+        if (pathIdx <= 23) {
+          const destPoint = this.getPointFromPathIndex(color, pathIdx);
+          entersZone = this.isInHomeZone(color, destPoint);
+        }
+        dice = [val, val, val, val];
+        if (entersZone) {
+          this.pendingComplement = 7 - val; // sera révélé après coup
+        }
+      } else {
+        // Phase normale : la valeur x4 est jouée d'abord. Le complément x4 est
+        // révélé seulement une fois les 4 premiers coups joués (cf. revealComplementIfNeeded).
+        dice = [val, val, val, val];
+        this.pendingComplement = 7 - val;
+      }
+    } else if (isFourThree) {
+      if (inSpecialPhase) {
+        const pathIdx = this.getPathIndex(color, currentSpecialPos) + 7;
+        let entersZone = false;
+        if (pathIdx <= 23) {
+          const destPoint = this.getPointFromPathIndex(color, pathIdx);
+          entersZone = this.isInHomeZone(color, destPoint);
+        }
+        // Si pathIdx > 23 (dépassement théorique), ce n'est pas considéré comme une
+        // entrée en zone valide dans ce contexte : pas de bonus.
+        if (entersZone) {
+          dice = [4, 3];
+          grantsExtraTurn = true;
+          bonusDoubleChoice = 'PENDING';
+        } else {
+          dice = [4, 3];
+        }
+      } else {
+        dice = [4, 3];
+        grantsExtraTurn = true;
+        bonusDoubleChoice = 'PENDING';
+      }
+    } else {
+      dice = [d1, d2];
+    }
+
+    this.pendingDice = dice;
+    this.log.push(`${color} lance ${d1} et ${d2}`);
+
+    return {
+      color,
+      d1, d2,
+      dice: [...dice],
+      isDouble,
+      isFourThree,
+      bonusDoubleChoice,
+      grantsExtraTurn,
+      firstTurn: inSpecialPhase
+    };
+  }
+
+  // Appelé par l'UI une fois que le joueur a choisi son double bonus (1-6) suite à un 4-3
+  applyBonusDoubleChoice(chosenValue) {
+    // IMPORTANT : à ce stade, le 4 et le 3 ont déjà été joués (le popup n'apparaît
+    // qu'une fois les deux joués). pendingDice doit donc être REMPLACÉ par le double
+    // choisi, pas complété, sinon le 4 et le 3 réapparaissent comme jouables une 2e fois.
+    this.pendingDice = [chosenValue, chosenValue, chosenValue, chosenValue];
+  }
+
+  // ------------------------------------------------------------
+  // Légalité et exécution des coups
+  // ------------------------------------------------------------
+
+  // Retourne le point de destination pour un déplacement de `steps` depuis `fromPoint` pour `color`
+  destinationPoint(color, fromPoint, steps) {
+    const pathIdx = this.getPathIndex(color, fromPoint) + steps;
+    if (pathIdx > 23) return null; // dépasse -> bear off potentiel, géré séparément
+    return this.getPointFromPathIndex(color, pathIdx);
+  }
+
+  // Est-ce que jouer `steps` depuis `fromPoint` est légal pour `color`, dans l'état actuel ?
+  isLegalMove(color, fromPoint, steps) {
+    const fromIdx = fromPoint - 1;
+    if (this.points[fromIdx].color !== color || this.points[fromIdx].count < 1) return false;
+
+    const pathIdx = this.getPathIndex(color, fromPoint) + steps;
+
+    if (pathIdx > 23) {
+      // sortie potentielle (bear off) - seulement si tous les pions sont dans le camp
+      if (!this.allInHome(color)) return false;
+      // règle standard : on ne peut sortir que si exact, ou si c'est le pion le plus reculé et le dé dépasse
+      return this.isLegalBearOff(color, fromPoint, steps);
+    }
+
+    const destPoint = this.getPointFromPathIndex(color, pathIdx);
+    if (this.isPointClosedFor(color, destPoint)) return false;
+    if (this.wouldCreateIllegalWall(color, destPoint)) return false;
+
+    return true;
+  }
+
+  isLegalBearOff(color, fromPoint, steps) {
+    const pathIdx = this.getPathIndex(color, fromPoint);
+    const exactNeeded = 24 - pathIdx; // combien de pas pour sortir exactement
+    if (steps === exactNeeded) return true;
+    if (steps > exactNeeded) {
+      // seulement légal si aucun pion plus reculé (pathIdx plus petit) n'existe
+      for (let p = 1; p <= 24; p++) {
+        if (this.points[p - 1].color === color && this.points[p - 1].count > 0) {
+          const otherPathIdx = this.getPathIndex(color, p);
+          if (otherPathIdx < pathIdx) return false;
+        }
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Liste tous les coups légaux possibles pour une valeur de dé donnée
+  legalMovesForDie(color, steps) {
+    const moves = [];
+    if (this.isFirstTurn[color]) {
+      const startPoint = color === 'white' ? 24 : 12;
+      const specialPoint = this.firstTurnPiecePos[color] !== null ? this.firstTurnPiecePos[color] : startPoint;
+      if (this.isLegalMove(color, specialPoint, steps)) {
+        moves.push({ from: specialPoint, steps });
+      }
+      return moves;
+    }
+    for (let p = 1; p <= 24; p++) {
+      const idx = p - 1;
+      if (this.points[idx].color === color && this.points[idx].count > 0) {
+        if (this.isLegalMove(color, p, steps)) {
+          moves.push({ from: p, steps });
+        }
+      }
+    }
+    return moves;
+  }
+
+  // Applique un coup (déplace un pion), gère le bear off et le suivi de la phase "premier tour"
+  applyMove(color, fromPoint, steps) {
+    const wasSpecialPiece = this.isFirstTurn[color] &&
+      (this.firstTurnPiecePos[color] !== null ? this.firstTurnPiecePos[color] : (color === 'white' ? 24 : 12)) === fromPoint;
+
+    const fromIdx = fromPoint - 1;
+    this.points[fromIdx].count -= 1;
+    if (this.points[fromIdx].count === 0) this.points[fromIdx].color = null;
+
+    const pathIdx = this.getPathIndex(color, fromPoint) + steps;
+    if (pathIdx > 23) {
+      this.borneOff[color] += 1;
+      this.log.push(`${color} sort un pion (${this.borneOff[color]}/15)`);
+      if (wasSpecialPiece) {
+        this.isFirstTurn[color] = false; // phase terminée (sortie directe)
+        this.firstTurnPiecePos[color] = null;
+      }
+      if (this.borneOff[color] === 15) {
+        this.gameOver = true;
+        this.winner = color;
+      }
+    } else {
+      const destPoint = this.getPointFromPathIndex(color, pathIdx);
+      const destIdx = destPoint - 1;
+      if (this.points[destIdx].color === color) {
+        this.points[destIdx].count += 1;
+      } else {
+        // ne devrait jamais arriver (pas de capture, point fermé bloque déjà)
+        this.points[destIdx] = { color, count: 1 };
+      }
+      this.log.push(`${color} joue ${fromPoint} -> ${destPoint} (${steps})`);
+
+      if (wasSpecialPiece) {
+        if (this.isInHomeZone(color, destPoint)) {
+          this.isFirstTurn[color] = false; // phase "entrée en zone" terminée
+          this.firstTurnPiecePos[color] = null;
+          this.log.push(`${color} : le pion spécial entre dans la zone -> fin de la phase de premier tour`);
+        } else {
+          this.firstTurnPiecePos[color] = destPoint; // toujours en phase spéciale, on suit sa nouvelle position
+        }
+      }
+    }
+  }
+
+  // Vérifie si `color` a au moins un coup légal parmi this.pendingDice
+  hasAnyLegalMove(color, diceList) {
+    // Pendant la phase "premier tour" (entrée en zone), un seul pion est autorisé à bouger.
+    if (this.isFirstTurn[color]) {
+      const startPoint = color === 'white' ? 24 : 12;
+      const specialPoint = this.firstTurnPiecePos[color] !== null ? this.firstTurnPiecePos[color] : startPoint;
+      for (const steps of diceList) {
+        if (this.isLegalMove(color, specialPoint, steps)) return true;
+      }
+      return false;
+    }
+
+    for (const steps of diceList) {
+      for (let p = 1; p <= 24; p++) {
+        if (this.points[p - 1].color === color && this.points[p - 1].count > 0) {
+          if (this.isLegalMove(color, p, steps)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // Fin de tour : dés non joués sont transférés à l'adversaire
+  endTurnAndTransfer() {
+    const color = this.currentPlayer;
+    const opp = this.opponent(color);
+    const unplayed = [...this.pendingDice];
+    this.pendingDice = [];
+
+    // Note : isFirstTurn[color] n'est PAS réinitialisé ici. La phase "premier tour"
+    // (entrée en zone) se termine uniquement quand le pion spécial atteint sa zone,
+    // ce qui est géré dans applyMove(). Elle peut donc s'étaler sur plusieurs tours.
+
+    if (unplayed.length > 0) {
+      if (this.isFirstTurn[color]) {
+        // Pendant la phase premier tour, un coup bloqué (par un pion adverse) est
+        // simplement PERDU, jamais transféré à l'adversaire.
+        this.log.push(`${color} (premier tour) ne peut pas jouer ${unplayed.join(', ')} -> perdu(s), pas de transfert`);
+      } else {
+        this.transferredDice = unplayed;
+        this.log.push(`${color} ne peut pas jouer ${unplayed.join(', ')} -> transféré à ${opp}`);
+      }
+    }
+
+    if (this.extraTurnPending) {
+      this.extraTurnPending = false;
+      return { samePlayerContinues: true };
+    }
+
+    this.currentPlayer = opp;
+    return { samePlayerContinues: false };
+  }
+
+  consumeTransferredDice() {
+    const color = this.currentPlayer;
+    const inherited = [...this.transferredDice];
+    this.transferredDice = [];
+
+    const stillPlayable = [];
+    const lost = [];
+    for (const steps of inherited) {
+      if (this.hasAnyLegalMove(color, [steps])) {
+        stillPlayable.push(steps);
+      } else {
+        lost.push(steps);
+      }
+    }
+
+    if (lost.length > 0) {
+      this.log.push(`${color} ne peut pas utiliser le(s) dé(s) hérité(s) ${lost.join(', ')} -> perdu(s)`);
+    }
+    if (stillPlayable.length > 0) {
+      this.log.push(`${color} doit obligatoirement jouer le(s) dé(s) hérité(s) : ${stillPlayable.join(', ')}`);
+    }
+
+    this.mandatoryDice = stillPlayable;
+    return { stillPlayable, lost };
+  }
+}
+
+</script>
+<script>
+// ============================================================
+// UI Layer
+// ============================================================
+
+let engine = new BackgammonEngine();
+let selectedOrigin = null; // point sélectionné pour déplacer
+let usedDiceIndices = new Set(); // indices dans pendingDice déjà utilisés ce tour
+let usedDiceHistory = []; // pile parallèle à engine.history, pour restaurer usedDiceIndices lors d'un undo
+let awaitingBonusChoice = null; // { entersZone } en attente de choix utilisateur
+// firstTurnPiecePos et isFirstTurn sont maintenant gérés directement par le moteur (engine.firstTurnPiecePos)
+
+const boardEl = document.getElementById('board');
+const diceArea = document.getElementById('dice-area');
+const messageBox = document.getElementById('message-box');
+const logPanel = document.getElementById('log-panel');
+const turnDot = document.getElementById('turn-dot');
+const turnText = document.getElementById('turn-text');
+
+function pointTopOrder() { return [13,14,15,16,17,18,19,20,21,22,23,24]; }
+function pointBottomOrder() { return [12,11,10,9,8,7,6,5,4,3,2,1]; }
+
+function topDarkPattern(pointNum) { return (pointNum - 13) % 2 === 0; }
+function bottomDarkPattern(pointNum) { return (12 - pointNum) % 2 === 1; }
+
+function buildBoard() {
+  boardEl.innerHTML = '';
+  const topOrder = pointTopOrder();
+  const bottomOrder = pointBottomOrder();
+
+  topOrder.forEach((pointNum) => {
+    boardEl.appendChild(makePointEl(pointNum, 'top'));
+  });
+
+  bottomOrder.forEach((pointNum) => {
+    boardEl.appendChild(makePointEl(pointNum, 'bottom'));
+  });
+}
+
+function makePointEl(pointNum, position) {
+  const el = document.createElement('div');
+  el.className = 'point ' + position;
+  const isDark = (position === 'top') ? topDarkPattern(pointNum) : bottomDarkPattern(pointNum);
+  if (isDark) el.classList.add('dark');
+  el.dataset.point = pointNum;
+
+  if (pointNum >= 1 && pointNum <= 6) el.classList.add('home-white');
+  if (pointNum >= 13 && pointNum <= 18) el.classList.add('home-black');
+
+  if (pointNum >= 1 && pointNum <= 6 || pointNum >= 13 && pointNum <= 18) {
+    const strip = document.createElement('div');
+    strip.className = 'home-zone-strip';
+    el.appendChild(strip);
+  }
+
+  const label = document.createElement('div');
+  label.className = 'point-label';
+  label.textContent = pointNum;
+  el.appendChild(label);
+
+  const checkers = document.createElement('div');
+  checkers.className = 'checkers';
+  el.appendChild(checkers);
+
+  el.addEventListener('click', () => onPointClick(pointNum));
+
+  return el;
+}
+
+function renderBoard() {
+  document.querySelectorAll('.point').forEach(el => {
+    const pointNum = parseInt(el.dataset.point);
+    const idx = pointNum - 1;
+    const pt = engine.points[idx];
+    const checkersEl = el.querySelector('.checkers');
+    checkersEl.innerHTML = '';
+    // Retire tout pion spécial d'un rendu précédent (il est maintenant un enfant
+    // direct du point, pas de .checkers, pour un positionnement absolu correct).
+    const oldSpecial = el.querySelector(':scope > .first-turn-piece');
+    if (oldSpecial) oldSpecial.remove();
+
+    el.classList.remove('closed-white', 'closed-black', 'selectable', 'origin-selected');
+
+    // Cas spécial premier tour : le pion unique mobile a une position visuelle dédiée
+    // (pointe du triangle si hors zone, base si dans la zone), séparé du reste.
+    const whiteSpecialPos = engine.isFirstTurn.white ? (engine.firstTurnPiecePos.white !== null ? engine.firstTurnPiecePos.white : 24) : null;
+    const blackSpecialPos = engine.isFirstTurn.black ? (engine.firstTurnPiecePos.black !== null ? engine.firstTurnPiecePos.black : 12) : null;
+    const movingColor = (whiteSpecialPos !== null && pointNum === whiteSpecialPos) ? 'white'
+                       : (blackSpecialPos !== null && pointNum === blackSpecialPos) ? 'black'
+                       : null;
+
+    if (pt.color && pt.count > 0) {
+      const isTopRow = el.classList.contains('top');
+      let stackCount = pt.count;
+      let showMovingPieceSeparately = false;
+
+      if (movingColor === pt.color) {
+        stackCount = pt.count - 1; // le reste de la pile, hors le pion spécial
+        showMovingPieceSeparately = true;
+      }
+
+      // Construire les groupes de 3 pour la pile "normale"
+      const groups = [];
+      let remaining = stackCount;
+      while (remaining > 0) {
+        const groupSize = Math.min(3, remaining);
+        groups.push(groupSize);
+        remaining -= groupSize;
+      }
+
+      // Positionnement absolu, calculé identiquement pour les deux rangées (ancré depuis
+      // le bord "base" via top ou bottom selon la rangée) — évite toute différence de
+      // rendu liée à flex-direction:column-reverse et ses marges négatives.
+      const CHECKER_SIZE = 24;
+      const CHECKER_STEP = 14; // décalage vertical par pion supplémentaire DANS un groupe
+      const maxGroupHeight = CHECKER_SIZE + 2 * CHECKER_STEP; // hauteur d'un groupe plein de 3
+      const AVAILABLE_HEIGHT = 140; // espace vertical utilisable pour la pile dans une case
+      let groupStep = maxGroupHeight;
+      if (groups.length > 1) {
+        groupStep = (AVAILABLE_HEIGHT - maxGroupHeight) / (groups.length - 1);
+        groupStep = Math.max(10, Math.min(maxGroupHeight, groupStep));
+      }
+
+      const normalStackFrag = document.createDocumentFragment();
+      groups.forEach((size, gIdx) => {
+        const group = document.createElement('div');
+        group.className = 'checker-group';
+        group.style.position = 'absolute';
+        group.style.left = '50%';
+        group.style.transform = 'translateX(-50%)';
+        const groupOffset = gIdx * groupStep;
+        if (isTopRow) {
+          group.style.top = groupOffset + 'px';
+        } else {
+          group.style.bottom = groupOffset + 'px';
+        }
+        // Intérieur du groupe : toujours le même ordre/chevauchement, quelle que soit
+        // la rangée — seul l'ancrage du groupe entier (top/bottom) diffère.
+        for (let i = 0; i < size; i++) {
+          const c = document.createElement('div');
+          c.className = 'checker ' + pt.color;
+          if (i > 0) c.style.marginTop = -CHECKER_STEP + 'px';
+          group.appendChild(c);
+        }
+        normalStackFrag.appendChild(group);
+      });
+
+      checkersEl.style.position = 'relative';
+      checkersEl.appendChild(normalStackFrag);
+
+      if (showMovingPieceSeparately) {
+        const isInZone = engine.isInHomeZone(pt.color, pointNum);
+        const specialChecker = document.createElement('div');
+        specialChecker.className = 'checker-group first-turn-piece ' + (isInZone ? 'at-base' : 'at-tip');
+        const c = document.createElement('div');
+        c.className = 'checker ' + pt.color;
+        specialChecker.appendChild(c);
+        // Ajouté directement au point (pas à .checkers) pour que son positionnement
+        // absolu se calcule par rapport à la case entière, sans dépendre de la
+        // taille variable de la pile normale.
+        el.appendChild(specialChecker);
+      }
+
+      if (pt.color !== engine.currentPlayer) {
+        el.classList.add(pt.color === 'white' ? 'closed-white' : 'closed-black');
+      }
+    }
+
+    if (selectedOrigin === pointNum) {
+      el.classList.add('origin-selected');
+    } else if (selectedOrigin === null && pt.color === engine.currentPlayer && pt.count > 0) {
+      // surligner légèrement les points jouables n'est pas demandé (mode libre), on skip
+    }
+  });
+
+  document.getElementById('white-off').textContent = engine.borneOff.white;
+  document.getElementById('black-off').textContent = engine.borneOff.black;
+
+  turnDot.className = 'turn-dot ' + engine.currentPlayer;
+  turnText.textContent = 'Tour : ' + (engine.currentPlayer === 'white' ? 'Blanc' : 'Noir') +
+    (engine.isFirstTurn[engine.currentPlayer] ? ' (premier tour)' : '');
+  document.getElementById('roll-counter').textContent = engine.rollCounter > 0 ? `Lancer n°${engine.rollCounter}` : '';
+
+  renderDice();
+  renderLog();
+
+  if (typeof saveGameState === 'function') {
+    saveGameState();
+  }
+}
+
+function renderDice() {
+  diceArea.innerHTML = '';
+  engine.pendingDice.forEach((val, i) => {
+    const d = document.createElement('div');
+    d.className = 'die';
+    if (usedDiceIndices.has(i)) d.classList.add('used');
+    d.textContent = val;
+    diceArea.appendChild(d);
+  });
+}
+
+function renderLog() {
+  logPanel.innerHTML = engine.log.slice(-10).map(l => `<div>${l}</div>`).join('');
+  logPanel.scrollTop = logPanel.scrollHeight;
+}
+
+function setMessage(text, type) {
+  messageBox.textContent = text;
+  messageBox.className = 'message-box' + (type ? ' ' + type : '');
+}
+
+// ------------------------------------------------------------
+// Interaction
+// ------------------------------------------------------------
+
+document.getElementById('btn-roll').addEventListener('click', () => {
+  if (!isMyTurnOrLocal()) {
+    setMessage('Ce n\'est pas ton tour.', 'warning');
+    return;
+  }
+  if (engine.pendingDice.length > 0) {
+    setMessage('Tu dois d\'abord jouer le(s) dé(s) affiché(s) avant de relancer.', 'warning');
+    return;
+  }
+  if (engine.gameOver) return;
+
+  const result = engine.rollDice();
+  usedDiceIndices = new Set();
+  usedDiceHistory = [];
+  engine.clearHistory();
+  selectedOrigin = null;
+
+  if (result.bonusDoubleChoice === 'PENDING') {
+    // Le bonus (choix du double) ne sera proposé qu'une fois le 4 ET le 3 réellement joués
+    // (cf. checkTurnCompletion). Si on est dans cette branche, le moteur a déjà confirmé
+    // que le bonus s'applique (entrée en zone ou hors phase premier tour) — pas de condition
+    // supplémentaire à vérifier ici.
+    pendingBonusAfterFourThree = true;
+    setMessage(`Combo 4-3 ! Joue le 4 et le 3, le choix du double bonus viendra ensuite.`, 'success');
+    checkForBlockedTurn();
+  } else {
+    let msg = `${result.color === 'white' ? 'Blanc' : 'Noir'} a tiré ${result.d1} et ${result.d2}.`;
+    if (result.isDouble) msg += ' Double !';
+    if (result.isFourThree && result.firstTurn) {
+      msg += ' (Combo 4-3 joué normalement — hors zone au premier tour, pas de bonus.)';
+    }
+    setMessage(msg);
+    checkForBlockedTurn();
+  }
+
+  renderBoard();
+});
+
+let pendingBonusAfterFourThree = null; // true si un choix de double bonus doit être proposé après le 4-3
+let playingInheritedDice = false; // true tant que les dés hérités obligatoires n'ont pas tous été joués
+
+function showBonusChoiceModal() {
+  const modal = document.getElementById('modal-bonus');
+  const choicesEl = document.getElementById('bonus-choices');
+  choicesEl.innerHTML = '';
+  for (let v = 1; v <= 6; v++) {
+    const btn = document.createElement('button');
+    btn.textContent = v;
+    btn.addEventListener('click', () => {
+      engine.applyBonusDoubleChoice(v);
+      engine.extraTurnPending = true;
+      modal.classList.remove('visible');
+      usedDiceIndices = new Set(); // les 4 nouvelles valeurs du double sont non-utilisées
+      renderBoard();
+
+      const stillLegal = engine.hasAnyLegalMove(engine.currentPlayer, engine.pendingDice);
+      if (!stillLegal) {
+        // Le double bonus choisi est entièrement bloqué : le tour supplémentaire est
+        // annulé (les dés n'ont pas pu être joués) et le transfert se fait normalement.
+        engine.extraTurnPending = false;
+        setMessage(`Bonus : ${v}×4 ajouté — mais aucun coup légal possible avec ces dés. Transfert à l'adversaire.`, 'warning');
+        finalizeTurnWithTransfer();
+        return;
+      }
+
+      setMessage(`Bonus : ${v}×4 ajouté. Un tour complet supplémentaire suivra.`, 'success');
+      attachDieHandlers();
+    });
+    choicesEl.appendChild(btn);
+  }
+  modal.classList.add('visible');
+}
+
+function onPointClick(pointNum) {
+  if (engine.gameOver) return;
+  if (!isMyTurnOrLocal()) {
+    setMessage('Ce n\'est pas ton tour.', 'warning');
+    return;
+  }
+  if (engine.pendingDice.length === 0) {
+    setMessage('Lance les dés d\'abord.');
+    return;
+  }
+
+  const color = engine.currentPlayer;
+  const idx = pointNum - 1;
+  const pt = engine.points[idx];
+
+  if (selectedOrigin === null) {
+    // sélection d'une origine
+    if (pt.color !== color || pt.count < 1) {
+      setMessage('Ce point ne contient pas un de tes pions.', 'warning');
+      return;
+    }
+    if (engine.isFirstTurn[color]) {
+      // Phase premier tour (entrée en zone en cours) : un seul pion peut bouger. On suit sa position actuelle.
+      const startPoint = color === 'white' ? 24 : 12;
+      const trackedPoint = engine.firstTurnPiecePos[color] !== null ? engine.firstTurnPiecePos[color] : startPoint;
+      if (pointNum !== trackedPoint) {
+        setMessage('Premier tour : un seul pion peut bouger — clique sur ce pion précis.', 'warning');
+        return;
+      }
+    }
+    selectedOrigin = pointNum;
+    renderBoard();
+    setMessage(`Pion sélectionné en ${pointNum}. Choisis une valeur de dé à jouer, ou clique la destination directement.`);
+    return;
+  }
+
+  // Cliquer à nouveau sur le point déjà sélectionné désélectionne (annule le choix)
+  if (selectedOrigin === pointNum) {
+    selectedOrigin = null;
+    renderBoard();
+    setMessage('Sélection annulée. Choisis un autre pion.');
+    return;
+  }
+
+  // une origine est déjà sélectionnée -> ce clic est interprété comme tentative de rejouer
+  // on cherche quelle valeur de dé permettrait d'atteindre pointNum depuis selectedOrigin
+  attemptMoveToPoint(pointNum);
+}
+
+function attemptMoveToPoint(targetPoint) {
+  const color = engine.currentPlayer;
+  const from = selectedOrigin;
+
+  // chercher parmi les dés non utilisés une valeur qui amène pile à targetPoint (ou bear off si targetPoint est hors plateau, non applicable ici)
+  let foundDieIndex = -1;
+  let foundSteps = -1;
+
+  for (let i = 0; i < engine.pendingDice.length; i++) {
+    if (usedDiceIndices.has(i)) continue;
+    const steps = engine.pendingDice[i];
+    const pathIdx = engine.getPathIndex(color, from) + steps;
+    if (pathIdx > 23) continue; // bear off, pas une destination sur plateau
+    const dest = engine.getPointFromPathIndex(color, pathIdx);
+    if (dest === targetPoint) {
+      foundDieIndex = i;
+      foundSteps = steps;
+      break;
+    }
+  }
+
+  if (foundDieIndex === -1) {
+    // Vérifie si un dé permettrait plutôt une SORTIE (bear off) depuis ce pion,
+    // pour orienter clairement le joueur vers la bonne action.
+    const canBearOff = engine.pendingDice.some((steps, i) =>
+      !usedDiceIndices.has(i) && engine.isLegalMove(color, from, steps) &&
+      engine.getPathIndex(color, from) + steps > 23
+    );
+    if (canBearOff) {
+      setMessage('Pour sortir ce pion, clique sur la zone "sortis" de ta couleur en bas, ou directement sur le dé correspondant.', 'warning');
+    } else {
+      setMessage('Aucun dé disponible ne permet ce déplacement depuis le point sélectionné.', 'warning');
+    }
+    return;
+  }
+
+  if (!engine.isLegalMove(color, from, foundSteps)) {
+    setMessage('Coup illégal : point fermé par l\'adversaire ou créerait un mur de 6 interdit.', 'warning');
+    return;
+  }
+
+  engine.pushHistory();
+  usedDiceHistory.push(new Set(usedDiceIndices));
+  engine.applyMove(color, from, foundSteps);
+  usedDiceIndices.add(foundDieIndex);
+  // engine.applyMove() gère déjà la mise à jour de firstTurnPiecePos / isFirstTurn en interne.
+  selectedOrigin = null;
+
+  if (engine.gameOver) {
+    setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success');
+    renderBoard();
+    return;
+  }
+
+  renderBoard();
+  checkTurnCompletion();
+}
+
+// Sortie via clic sur la zone "sortis" (tray) — alternative plus intuitive que cliquer sur le dé.
+function attemptBearOff(color) {
+  if (engine.gameOver) return;
+  if (!isMyTurnOrLocal()) {
+    setMessage('Ce n\'est pas ton tour.', 'warning');
+    return;
+  }
+  if (color !== engine.currentPlayer) {
+    setMessage('Ce n\'est pas ton tour.', 'warning');
+    return;
+  }
+  if (selectedOrigin === null) {
+    setMessage('Sélectionne d\'abord le pion à sortir.', 'warning');
+    return;
+  }
+  const from = selectedOrigin;
+
+  // Cherche un dé jouable qui sort ce pion : priorité au coup EXACT, sinon un surplus légal.
+  let foundDieIndex = -1;
+  let bestSteps = -1;
+  for (let i = 0; i < engine.pendingDice.length; i++) {
+    if (usedDiceIndices.has(i)) continue;
+    const steps = engine.pendingDice[i];
+    const pathIdx = engine.getPathIndex(color, from) + steps;
+    if (pathIdx <= 23) continue; // pas une sortie
+    if (!engine.isLegalMove(color, from, steps)) continue;
+    const exactNeeded = 24 - engine.getPathIndex(color, from);
+    if (steps === exactNeeded) {
+      foundDieIndex = i;
+      bestSteps = steps;
+      break; // le coup exact est toujours prioritaire
+    }
+    if (foundDieIndex === -1) {
+      foundDieIndex = i;
+      bestSteps = steps;
+    }
+  }
+
+  if (foundDieIndex === -1) {
+    setMessage('Aucun dé ne permet de sortir ce pion pour l\'instant (pion pas encore dans la zone, ou un pion plus reculé existe).', 'warning');
+    return;
+  }
+
+  engine.pushHistory();
+  usedDiceHistory.push(new Set(usedDiceIndices));
+  engine.applyMove(color, from, bestSteps);
+  usedDiceIndices.add(foundDieIndex);
+  selectedOrigin = null;
+
+  if (engine.gameOver) {
+    setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success');
+    renderBoard();
+    return;
+  }
+
+  renderBoard();
+  checkTurnCompletion();
+}
+
+document.getElementById('white-off-tray').addEventListener('click', () => attemptBearOff('white'));
+document.getElementById('black-off-tray').addEventListener('click', () => attemptBearOff('black'));
+
+// Permet aussi de choisir la valeur de dé à jouer en cliquant directement sur un die,
+// pour les cas de bear-off (destination hors plateau) — on gère ça via un clic sur le dé.
+diceArea.addEventListener('click', (e) => {
+  // délégation: on reconstruit car renderDice recrée les éléments
+});
+
+function attachDieHandlers() {
+  const dieEls = diceArea.querySelectorAll('.die');
+  dieEls.forEach((dieEl, i) => {
+    // Cloner et remplacer l'élément garantit qu'aucun ancien listener ne reste attaché,
+    // même si attachDieHandlers() est appelée plusieurs fois sur le même rendu.
+    const freshDie = dieEl.cloneNode(true);
+    dieEl.parentNode.replaceChild(freshDie, dieEl);
+    freshDie.style.cursor = 'pointer';
+    freshDie.addEventListener('click', () => {
+      if (!isMyTurnOrLocal()) {
+        setMessage('Ce n\'est pas ton tour.', 'warning');
+        return;
+      }
+      if (usedDiceIndices.has(i)) return;
+      if (selectedOrigin === null) {
+        setMessage('Sélectionne d\'abord un pion à déplacer.');
+        return;
+      }
+      const color = engine.currentPlayer;
+      const steps = engine.pendingDice[i];
+      if (!engine.isLegalMove(color, selectedOrigin, steps)) {
+        setMessage('Ce dé ne donne pas un coup légal pour ce pion.', 'warning');
+        return;
+      }
+      const fromPoint = selectedOrigin;
+      engine.pushHistory();
+      usedDiceHistory.push(new Set(usedDiceIndices));
+      engine.applyMove(color, fromPoint, steps);
+      usedDiceIndices.add(i);
+      selectedOrigin = null;
+
+      if (engine.gameOver) {
+        setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success');
+        renderBoard();
+        return;
+      }
+      renderBoard();
+      checkTurnCompletion();
+    });
+  });
+}
+
+function checkForBlockedTurn() {
+  const color = engine.currentPlayer;
+  if (engine.pendingDice.length === 0) return;
+  const remaining = engine.pendingDice.filter((_, i) => !usedDiceIndices.has(i));
+  if (remaining.length === 0) return;
+  if (!engine.hasAnyLegalMove(color, remaining)) {
+    setMessage(`${color === 'white' ? 'Blanc' : 'Noir'} ne peut jouer aucun des dés restants (${remaining.join(', ')}). Transfert à l'adversaire.`, 'warning');
+    // marquer tous les dés restants comme "à transférer" : on force la fin de tour
+    finalizeTurnWithTransfer();
+  }
+}
+
+function checkTurnCompletion() {
+  const remaining = engine.pendingDice.filter((_, i) => !usedDiceIndices.has(i));
+  if (remaining.length === 0) {
+    // Cas 0 : on venait de jouer un/des dé(s) hérité(s) obligatoire(s) -> le joueur peut
+    // maintenant lancer ses propres dés, le tour ne change PAS de joueur.
+    if (playingInheritedDice) {
+      playingInheritedDice = false;
+      usedDiceIndices = new Set();
+      setMessage(`Dé(s) hérité(s) joué(s). ${engine.currentPlayer === 'white' ? 'Blanc' : 'Noir'} peut maintenant lancer ses propres dés.`, 'success');
+      renderBoard();
+      return;
+    }
+    // Cas 1 : un bonus 4-3 est en attente -> proposer le choix du double maintenant
+    if (pendingBonusAfterFourThree) {
+      pendingBonusAfterFourThree = null;
+      showBonusChoiceModal();
+      return;
+    }
+    // Cas 2 : un complément à 7 est en attente (double hors phase premier tour)
+    const revealedValue = engine.pendingComplement; // capturé avant reveal pour le message combiné
+    const revealed = engine.revealComplementIfNeeded();
+    if (revealed) {
+      usedDiceIndices = new Set();
+      const revealedDice = [...engine.pendingDice];
+      renderBoard();
+
+      const stillLegal = engine.hasAnyLegalMove(engine.currentPlayer, revealedDice);
+      if (!stillLegal) {
+        // Le complément a été révélé mais est immédiatement injouable : on l'explique
+        // clairement en un seul message avant de transférer, plutôt que d'écraser l'info.
+        setMessage(`Complément à 7 révélé : ${revealedDice.join(', ')} — mais aucun coup légal possible avec ces dés. Transfert à l'adversaire.`, 'warning');
+        finalizeTurnWithTransfer();
+        return;
+      }
+
+      setMessage(`Complément à 7 révélé : ${revealedDice.join(', ')}. Continue de jouer.`, 'success');
+      attachDieHandlers();
+      return;
+    }
+    finalizeTurn();
+    return;
+  }
+  if (!engine.hasAnyLegalMove(engine.currentPlayer, remaining)) {
+    setMessage(`Plus aucun coup légal possible avec les dés restants (${remaining.join(', ')}). Transfert à l'adversaire.`, 'warning');
+    finalizeTurnWithTransfer();
+  } else {
+    attachDieHandlers();
+  }
+}
+
+function finalizeTurn() {
+  const endingColor = engine.currentPlayer;
+
+  // IMPORTANT : ne garder dans pendingDice que les dés réellement non utilisés,
+  // sinon endTurnAndTransfer() croirait que tous les dés (même ceux déjà joués) sont à transférer.
+  engine.pendingDice = engine.pendingDice.filter((_, i) => !usedDiceIndices.has(i));
+
+  const res = engine.endTurnAndTransfer();
+  // Note : la phase "premier tour" (entrée en zone) n'est PAS réinitialisée ici.
+  // Elle se termine uniquement quand le pion spécial atteint sa zone (géré dans engine.applyMove).
+  usedDiceIndices = new Set();
+  selectedOrigin = null;
+
+  if (!res.samePlayerContinues) {
+    // Si des dés ont été transférés au nouveau joueur, ils doivent être joués
+    // AVANT que celui-ci puisse lancer ses propres dés.
+    const transferInfo = engine.consumeTransferredDice();
+    if (transferInfo.stillPlayable.length > 0) {
+      engine.pendingDice = transferInfo.stillPlayable;
+      playingInheritedDice = true;
+      setMessage(`${engine.currentPlayer === 'white' ? 'Blanc' : 'Noir'} doit d'abord jouer le(s) dé(s) hérité(s) : ${transferInfo.stillPlayable.join(', ')} avant de lancer ses propres dés.`, 'warning');
+    } else {
+      playingInheritedDice = false;
+      if (transferInfo.lost.length > 0) {
+        setMessage(`Dé(s) hérité(s) ${transferInfo.lost.join(', ')} perdu(s) — aucun coup légal possible. Au tour de ${engine.currentPlayer === 'white' ? 'Blanc' : 'Noir'}. Lance les dés.`, 'warning');
+      } else {
+        setMessage(`Au tour de ${engine.currentPlayer === 'white' ? 'Blanc' : 'Noir'}. Lance les dés.`);
+      }
+    }
+  } else {
+    setMessage(`Tour complet supplémentaire ! Relance les dés.`, 'success');
+  }
+  renderBoard();
+  if (engine.pendingDice.length > 0) {
+    attachDieHandlers();
+  }
+}
+
+function finalizeTurnWithTransfer() {
+  // finalizeTurn() filtre déjà pendingDice pour ne garder que les dés non utilisés.
+  finalizeTurn();
+}
+
+document.getElementById('btn-undo-selection').addEventListener('click', () => {
+  selectedOrigin = null;
+  renderBoard();
+  setMessage('Sélection annulée.');
+});
+
+document.getElementById('btn-undo-move').addEventListener('click', () => {
+  if (!engine.canUndo()) {
+    setMessage('Aucun coup à annuler dans ce lancer.', 'warning');
+    return;
+  }
+  engine.undo();
+  usedDiceIndices = usedDiceHistory.pop() || new Set();
+  selectedOrigin = null;
+  pendingBonusAfterFourThree = null; // sera re-détecté naturellement si on rejoue le 4 et 3
+  renderBoard();
+  if (engine.pendingDice.length > 0) {
+    attachDieHandlers();
+  }
+  setMessage('Dernier coup annulé.', 'success');
+});
+
+document.getElementById('btn-diagnostic').addEventListener('click', () => {
+  const panel = document.getElementById('diagnostic-panel');
+  let lines = ['=== ÉTAT COMPLET DU PLATEAU ==='];
+  lines.push(`Tour actuel : ${engine.currentPlayer === 'white' ? 'Blanc' : 'Noir'}`);
+  lines.push(`Lancer n° : ${engine.rollCounter}`);
+  lines.push(`Dés en attente : ${engine.pendingDice.join(', ') || '(aucun)'}`);
+  lines.push(`Dés déjà utilisés (indices) : ${[...usedDiceIndices].join(', ') || '(aucun)'}`);
+  lines.push(`Complément en attente de révélation : ${engine.pendingComplement !== null ? engine.pendingComplement : '(aucun)'}`);
+  lines.push(`Bonus 4-3 en attente : ${pendingBonusAfterFourThree ? 'oui' : 'non'}`);
+  lines.push(`En train de jouer un dé hérité : ${playingInheritedDice ? 'oui' : 'non'}`);
+  lines.push(`Dés transférés en attente : ${engine.transferredDice.join(', ') || '(aucun)'}`);
+  lines.push(`Tour supplémentaire en attente (extraTurnPending) : ${engine.extraTurnPending}`);
+  lines.push(`Premier tour Blanc en cours : ${engine.isFirstTurn.white}`);
+  lines.push(`Premier tour Noir en cours : ${engine.isFirstTurn.black}`);
+  lines.push('');
+  lines.push('Points occupés (numéro : couleur x quantité) :');
+  for (let p = 1; p <= 24; p++) {
+    const pt = engine.points[p - 1];
+    if (pt.color && pt.count > 0) {
+      lines.push(`  Point ${p} : ${pt.color === 'white' ? 'Blanc' : 'Noir'} x${pt.count}`);
+    }
+  }
+  lines.push('');
+  lines.push(`Blancs sortis : ${engine.borneOff.white}/15`);
+  lines.push(`Noirs sortis : ${engine.borneOff.black}/15`);
+  lines.push('');
+  lines.push(`Mur illégal Blanc actuellement présent : ${engine.hasIllegalWall('white')}`);
+  lines.push(`Mur illégal Noir actuellement présent : ${engine.hasIllegalWall('black')}`);
+  lines.push('');
+  lines.push('=== HISTORIQUE DES 50 DERNIERS COUPS ===');
+  lines.push(...engine.log.slice(-50));
+
+  panel.textContent = lines.join('\n');
+  panel.style.display = 'block';
+  document.getElementById('btn-copy-diagnostic').style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth' });
+});
+
+document.getElementById('btn-copy-diagnostic').addEventListener('click', () => {
+  const text = document.getElementById('diagnostic-panel').textContent;
+  const btn = document.getElementById('btn-copy-diagnostic');
+  const originalLabel = btn.textContent;
+
+  function showCopiedFeedback() {
+    btn.textContent = '✅ Copié !';
+    setTimeout(() => { btn.textContent = originalLabel; }, 1500);
+  }
+
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(showCopiedFeedback).catch(() => {
+      fallbackCopy(text, showCopiedFeedback);
+    });
+  } else {
+    fallbackCopy(text, showCopiedFeedback);
+  }
+});
+
+function fallbackCopy(text, onSuccess) {
+  // Solution de repli pour les navigateurs/webviews qui ne supportent pas l'API Clipboard moderne.
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const success = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    if (success) {
+      onSuccess();
+    } else {
+      setMessage('Copie automatique indisponible — sélectionne le texte manuellement.', 'warning');
+    }
+  } catch (e) {
+    setMessage('Copie automatique indisponible — sélectionne le texte manuellement.', 'warning');
+  }
+}
+
+function showConfirm(text, onYes) {
+  const modal = document.getElementById('modal-confirm');
+  document.getElementById('modal-confirm-text').textContent = text;
+  modal.classList.add('visible');
+
+  const yesBtn = document.getElementById('modal-confirm-yes');
+  const noBtn = document.getElementById('modal-confirm-no');
+
+  // Cloner pour éviter l'accumulation de listeners entre plusieurs appels
+  const freshYes = yesBtn.cloneNode(true);
+  yesBtn.parentNode.replaceChild(freshYes, yesBtn);
+  const freshNo = noBtn.cloneNode(true);
+  noBtn.parentNode.replaceChild(freshNo, noBtn);
+
+  freshYes.addEventListener('click', () => {
+    modal.classList.remove('visible');
+    onYes();
+  });
+  freshNo.addEventListener('click', () => {
+    modal.classList.remove('visible');
+  });
+}
+
+document.getElementById('btn-force-pass').addEventListener('click', () => {
+  if (engine.gameOver) return;
+  if (engine.pendingDice.length === 0) {
+    setMessage('Aucun dé en attente — rien à passer pour le moment.', 'warning');
+    return;
+  }
+  showConfirm('Passer le tour ? Les dés restants seront transférés à l\'adversaire s\'il peut les jouer.', () => {
+    finalizeTurnWithTransfer();
+  });
+});
+
+document.getElementById('btn-new-game').addEventListener('click', () => {
+  showConfirm('Démarrer une nouvelle partie ? La partie en cours sera perdue.', () => {
+    engine = new BackgammonEngine();
+    selectedOrigin = null;
+    usedDiceIndices = new Set();
+    usedDiceHistory = [];
+    pendingBonusAfterFourThree = null;
+    playingInheritedDice = false;
+    document.getElementById('diagnostic-panel').style.display = 'none';
+    document.getElementById('modal-bonus').classList.remove('visible');
+    clearSavedGame();
+    setMessage('Nouvelle partie. Blanc commence — clique sur "Lancer les dés".');
+    renderBoard();
+  });
+});
+
+// ------------------------------------------------------------
+// Sauvegarde automatique (localStorage) — la partie persiste
+// même après fermeture ou rafraîchissement de la page.
+// ------------------------------------------------------------
+const SAVE_KEY = 'backgammon_custom_save_v1';
+
+function buildStateSnapshotObject() {
+  return {
+    engineSnapshot: engine.snapshot(),
+    currentPlayer: engine.currentPlayer,
+    usedDiceIndices: [...usedDiceIndices],
+    usedDiceHistory: usedDiceHistory.map(s => [...s]),
+    selectedOrigin: selectedOrigin,
+    pendingBonusAfterFourThree: pendingBonusAfterFourThree,
+    playingInheritedDice: playingInheritedDice,
+    history: engine.history,
+    log: engine.log
+  };
+}
+
+function applyStateSnapshotObject(state) {
+  engine = new BackgammonEngine();
+  const prev = JSON.parse(state.engineSnapshot);
+  engine.points = prev.points;
+  engine.borneOff = prev.borneOff;
+  engine.currentPlayer = prev.currentPlayer;
+  engine.isFirstTurn = prev.isFirstTurn;
+  engine.pendingDice = prev.pendingDice;
+  engine.transferredDice = prev.transferredDice;
+  engine.gameOver = prev.gameOver;
+  engine.winner = prev.winner;
+  engine.extraTurnPending = prev.extraTurnPending;
+  engine.pendingComplement = prev.pendingComplement;
+  engine.firstTurnPiecePos = prev.firstTurnPiecePos;
+  engine.rollCounter = prev.rollCounter;
+  engine.history = state.history || [];
+  engine.log = state.log || [];
+
+  usedDiceIndices = new Set(state.usedDiceIndices || []);
+  usedDiceHistory = (state.usedDiceHistory || []).map(arr => new Set(arr));
+  selectedOrigin = state.selectedOrigin;
+  pendingBonusAfterFourThree = state.pendingBonusAfterFourThree;
+  playingInheritedDice = state.playingInheritedDice;
+}
+
+function saveGameState() {
+  try {
+    const state = buildStateSnapshotObject();
+    localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error('Sauvegarde impossible :', e);
+  }
+  if (typeof broadcastStateIfRemote === 'function') {
+    broadcastStateIfRemote();
+  }
+}
+
+// ------------------------------------------------------------
+// Jeu à distance (WebRTC, signalisation manuelle par copier-coller)
+// ------------------------------------------------------------
+let rtcPeerConnection = null;
+let rtcDataChannel = null;
+let remoteMode = false;      // true une fois connecté à un pair
+let myColor = null;          // 'white' (hôte) ou 'black' (invité) en mode à distance
+let applyingRemoteState = false; // évite les boucles d'écho lors de la réception d'un état
+
+function broadcastStateIfRemote() {
+  if (!remoteMode || applyingRemoteState) return;
+  if (!rtcDataChannel || rtcDataChannel.readyState !== 'open') return;
+  try {
+    rtcDataChannel.send(JSON.stringify({ type: 'state', state: buildStateSnapshotObject() }));
+  } catch (e) {
+    console.error('Envoi impossible :', e);
+  }
+}
+
+function setRemoteStatus(text) {
+  document.getElementById('remote-status').textContent = text;
+}
+
+function waitForIceGathering(pc) {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') { resolve(); return; }
+    function check() {
+      if (pc.iceGatheringState === 'complete') {
+        pc.removeEventListener('icegatheringstatechange', check);
+        resolve();
+      }
+    }
+    pc.addEventListener('icegatheringstatechange', check);
+    // Filet de sécurité : ne pas attendre indéfiniment si certains candidats tardent.
+    setTimeout(resolve, 5000);
+  });
+}
+
+function setupDataChannelHandlers(channel) {
+  channel.addEventListener('open', () => {
+    remoteMode = true;
+    setRemoteStatus('✅ Connecté — tu joues ' + (myColor === 'white' ? 'les Blancs' : 'les Noirs'));
+    document.getElementById('remote-panel').style.display = 'none';
+    setMessage('Connexion établie ! Tu joues ' + (myColor === 'white' ? 'les Blancs' : 'les Noirs') + '.', 'success');
+    // L'hôte (Blanc) envoie l'état initial pour synchroniser l'invité dès la connexion.
+    if (myColor === 'white') broadcastStateIfRemote();
+  });
+  channel.addEventListener('close', () => {
+    remoteMode = false;
+    setRemoteStatus('🔌 Connexion perdue');
+  });
+  channel.addEventListener('message', (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'state') {
+        applyingRemoteState = true;
+        applyStateSnapshotObject(msg.state);
+        applyingRemoteState = false;
+        selectedOrigin = null;
+        renderBoard();
+        if (engine.pendingDice.length > 0) attachDieHandlers();
+      }
+    } catch (e) {
+      console.error('Message reçu invalide :', e);
+    }
+  });
+}
+
+async function startAsHost() {
+  myColor = 'white';
+  rtcPeerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+  rtcDataChannel = rtcPeerConnection.createDataChannel('backgammon');
+  setupDataChannelHandlers(rtcDataChannel);
+
+  const offer = await rtcPeerConnection.createOffer();
+  await rtcPeerConnection.setLocalDescription(offer);
+  await waitForIceGathering(rtcPeerConnection);
+
+  document.getElementById('host-offer-code').value = JSON.stringify(rtcPeerConnection.localDescription);
+  setRemoteStatus('En attente de connexion...');
+}
+
+async function connectAsHostWithAnswer(answerText) {
+  try {
+    const answer = JSON.parse(answerText.trim());
+    await rtcPeerConnection.setRemoteDescription(answer);
+    setRemoteStatus('Connexion en cours...');
+  } catch (e) {
+    setMessage('Code de réponse invalide. Vérifie le copier-coller.', 'warning');
+  }
+}
+
+async function startAsJoiner(offerText) {
+  try {
+    myColor = 'black';
+    const offer = JSON.parse(offerText.trim());
+    rtcPeerConnection = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+    rtcPeerConnection.addEventListener('datachannel', (event) => {
+      rtcDataChannel = event.channel;
+      setupDataChannelHandlers(rtcDataChannel);
+    });
+
+    await rtcPeerConnection.setRemoteDescription(offer);
+    const answer = await rtcPeerConnection.createAnswer();
+    await rtcPeerConnection.setLocalDescription(answer);
+    await waitForIceGathering(rtcPeerConnection);
+
+    document.getElementById('join-answer-code').value = JSON.stringify(rtcPeerConnection.localDescription);
+    document.getElementById('join-answer-section').style.display = 'block';
+    setRemoteStatus('En attente que l\'hôte se connecte...');
+  } catch (e) {
+    setMessage('Code de l\'hôte invalide. Vérifie le copier-coller.', 'warning');
+  }
+}
+
+function copyTextareaContent(textareaId, buttonEl) {
+  const text = document.getElementById(textareaId).value;
+  const original = buttonEl.textContent;
+  const done = () => { buttonEl.textContent = '✅ Copié !'; setTimeout(() => { buttonEl.textContent = original; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(() => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+
+document.getElementById('btn-toggle-remote-panel').addEventListener('click', () => {
+  const panel = document.getElementById('remote-panel');
+  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+});
+
+document.getElementById('btn-remote-host').addEventListener('click', () => {
+  document.getElementById('remote-panel-choice').style.display = 'none';
+  document.getElementById('remote-panel-host').style.display = 'block';
+  startAsHost();
+});
+
+document.getElementById('btn-remote-join').addEventListener('click', () => {
+  document.getElementById('remote-panel-choice').style.display = 'none';
+  document.getElementById('remote-panel-join').style.display = 'block';
+});
+
+document.getElementById('btn-copy-offer').addEventListener('click', (e) => copyTextareaContent('host-offer-code', e.target));
+document.getElementById('btn-copy-answer').addEventListener('click', (e) => copyTextareaContent('join-answer-code', e.target));
+
+document.getElementById('btn-connect-with-answer').addEventListener('click', () => {
+  const answerText = document.getElementById('host-answer-input').value;
+  if (!answerText.trim()) {
+    setMessage('Colle d\'abord le code de réponse.', 'warning');
+    return;
+  }
+  connectAsHostWithAnswer(answerText);
+});
+
+document.getElementById('btn-generate-answer').addEventListener('click', () => {
+  const offerText = document.getElementById('join-offer-input').value;
+  if (!offerText.trim()) {
+    setMessage('Colle d\'abord le code de l\'hôte.', 'warning');
+    return;
+  }
+  startAsJoiner(offerText);
+});
+
+document.getElementById('btn-remote-cancel').addEventListener('click', () => {
+  document.getElementById('remote-panel').style.display = 'none';
+  document.getElementById('remote-panel-choice').style.display = 'block';
+  document.getElementById('remote-panel-host').style.display = 'none';
+  document.getElementById('remote-panel-join').style.display = 'none';
+  document.getElementById('join-answer-section').style.display = 'none';
+  if (rtcPeerConnection && !remoteMode) {
+    rtcPeerConnection.close();
+    rtcPeerConnection = null;
+    rtcDataChannel = null;
+  }
+});
+
+// Verrouillage des actions : en mode à distance, chacun ne peut agir que pendant son propre tour.
+function isMyTurnOrLocal() {
+  if (!remoteMode) return true;
+  return engine.currentPlayer === myColor;
+}
+
+function loadGameState() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const state = JSON.parse(raw);
+    applyStateSnapshotObject(state);
+    return true;
+  } catch (e) {
+    console.error('Chargement impossible :', e);
+    return false;
+  }
+}
+
+function clearSavedGame() {
+  try {
+    localStorage.removeItem(SAVE_KEY);
+  } catch (e) {
+    console.error('Suppression de la sauvegarde impossible :', e);
+  }
+}
+
+buildBoard();
+const restored = loadGameState();
+renderBoard();
+if (engine.pendingDice.length > 0) {
+  // Vérifie si les dés restaurés sont réellement jouables ; sinon transfère
+  // automatiquement (corrige une partie sauvegardée avant ce correctif).
+  checkForBlockedTurn();
+  if (engine.pendingDice.length > 0) {
+    attachDieHandlers();
+  }
+}
+if (restored) {
+  setMessage('Partie précédente restaurée. ' + (engine.currentPlayer === 'white' ? 'Blanc' : 'Noir') + ' continue.', 'success');
+}
+</script>
+
+</body>
+</html>
