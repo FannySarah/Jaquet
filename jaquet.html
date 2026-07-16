@@ -1256,9 +1256,8 @@ document.getElementById('btn-roll').addEventListener('click', () => {
   }
 
   renderBoard();
-});
-
-let pendingBonusAfterFourThree = null; // true si un choix de double bonus doit être proposé après le 4-3
+  broadcastStateIfRemote(); // dés lancés, on synchronise l'adversaire
+});let pendingBonusAfterFourThree = null; // true si un choix de double bonus doit être proposé après le 4-3
 let playingInheritedDice = false; // true tant que les dés hérités obligatoires n'ont pas tous été joués
 
 function showBonusChoiceModal() {
@@ -1287,6 +1286,7 @@ function showBonusChoiceModal() {
 
       setMessage(`Bonus : ${v}×4 ajouté. Un tour complet supplémentaire suivra.`, 'success');
       attachDieHandlers();
+      broadcastStateIfRemote(); // bonus appliqué, on synchronise l'adversaire
     });
     choicesEl.appendChild(btn);
   }
@@ -1523,6 +1523,7 @@ function checkForBlockedTurn() {
 }
 
 function checkTurnCompletion() {
+  broadcastStateIfRemote(); // un vrai coup vient d'être joué, on synchronise l'adversaire
   const remaining = engine.pendingDice.filter((_, i) => !usedDiceIndices.has(i));
   if (remaining.length === 0) {
     // Cas 0 : on venait de jouer un/des dé(s) hérité(s) obligatoire(s) -> le joueur peut
@@ -1608,6 +1609,7 @@ function finalizeTurn() {
   if (engine.pendingDice.length > 0) {
     attachDieHandlers();
   }
+  broadcastStateIfRemote(); // tour terminé/transféré, on synchronise l'adversaire
 }
 
 function finalizeTurnWithTransfer() {
@@ -1635,6 +1637,7 @@ document.getElementById('btn-undo-move').addEventListener('click', () => {
     attachDieHandlers();
   }
   setMessage('Dernier coup annulé.', 'success');
+  broadcastStateIfRemote(); // coup annulé, on synchronise l'adversaire
 });
 
 document.getElementById('btn-diagnostic').addEventListener('click', () => {
@@ -1782,7 +1785,7 @@ function buildStateSnapshotObject() {
     pendingBonusAfterFourThree: pendingBonusAfterFourThree,
     playingInheritedDice: playingInheritedDice,
     history: engine.history,
-    log: engine.log
+    log: engine.log.slice(-50) // limite la taille envoyée sur le réseau pour les longues parties
   };
 }
 
@@ -1818,9 +1821,10 @@ function saveGameState() {
   } catch (e) {
     console.error('Sauvegarde impossible :', e);
   }
-  if (typeof broadcastStateIfRemote === 'function') {
-    broadcastStateIfRemote();
-  }
+  // Remarque : la diffusion réseau (broadcastStateIfRemote) n'est PAS appelée ici.
+  // Elle est déclenchée explicitement après les vraies actions de jeu (coup joué,
+  // dés lancés, tour terminé) — pas à chaque simple sélection visuelle d'un pion,
+  // ce qui évite de spammer Firebase et de ralentir l'interface.
 }
 
 // ------------------------------------------------------------
