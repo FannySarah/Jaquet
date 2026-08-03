@@ -333,6 +333,12 @@
     z-index: 100;
   }
   .modal-overlay.visible { display: flex; }
+  @keyframes victoryPopIn {
+    0% { transform: scale(0.6); opacity: 0; }
+    70% { transform: scale(1.05); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  #victory-box { animation: victoryPopIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
   .modal-box {
     background: var(--wood-dark);
     border: 2px solid var(--accent);
@@ -499,6 +505,17 @@
       <button id="modal-confirm-yes" style="width:auto; padding:8px 20px;">Oui</button>
       <button id="modal-confirm-no" style="width:auto; padding:8px 20px;">Annuler</button>
     </div>
+  </div>
+</div>
+
+<div id="victory-overlay" style="display:none; position:fixed; inset:0; z-index:2000; align-items:center; justify-content:center;">
+  <canvas id="confetti-canvas" style="position:fixed; inset:0; z-index:2001; pointer-events:none;"></canvas>
+  <div id="victory-box" style="position:relative; z-index:2002; background:linear-gradient(160deg, var(--wood-dark), var(--wood-mid)); border:3px solid var(--accent); border-radius:16px; padding:36px 28px; max-width:360px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+    <div id="victory-emoji" style="font-size:3rem; margin-bottom:6px;">🏆</div>
+    <h2 id="victory-title" style="color:var(--accent); margin:0 0 8px; font-size:1.6rem;">Victoire !</h2>
+    <p id="victory-subtitle" style="color:var(--cream); opacity:0.85; margin:0 0 22px;"></p>
+    <button id="btn-victory-newgame" style="width:auto; padding:10px 24px;">Nouvelle partie</button>
+    <button id="btn-victory-close" style="width:auto; padding:10px 18px; margin-left:8px; opacity:0.7;">Fermer</button>
   </div>
 </div>
 
@@ -681,21 +698,36 @@ class BackgammonEngine {
   }
 
   // Vérifie si placer un pion sur `point` créerait un mur illégal de 6 consécutifs
-  wouldCreateIllegalWall(color, point) {
-    // simulate
-    const idx = point - 1;
-    const before = { ...this.points[idx] };
-    if (this.points[idx].color === null || this.points[idx].color === color) {
-      this.points[idx] = { color, count: (this.points[idx].color === color ? this.points[idx].count : 0) + 1 };
+  wouldCreateIllegalWall(color, fromPoint, point) {
+    // simulate : retirer le pion du point de départ ET l'ajouter au point d'arrivée,
+    // pour évaluer le mur tel qu'il serait RÉELLEMENT après le coup.
+    const fromIdx = fromPoint - 1;
+    const toIdx = point - 1;
+    const fromBefore = { ...this.points[fromIdx] };
+    const toBefore = { ...this.points[toIdx] };
+
+    // Retrait au départ
+    if (this.points[fromIdx].count > 1) {
+      this.points[fromIdx] = { color, count: this.points[fromIdx].count - 1 };
+    } else {
+      this.points[fromIdx] = { color: null, count: 0 };
+    }
+
+    // Ajout à l'arrivée
+    if (this.points[toIdx].color === null || this.points[toIdx].color === color) {
+      this.points[toIdx] = { color, count: (this.points[toIdx].color === color ? this.points[toIdx].count : 0) + 1 };
     } else {
       // ne devrait pas arriver (point fermé), mais on ne simule pas dans ce cas
+      this.points[fromIdx] = fromBefore;
+      this.points[toIdx] = toBefore;
       return false;
     }
 
     const hasWall = this.hasIllegalWall(color);
 
     // restore
-    this.points[idx] = before;
+    this.points[fromIdx] = fromBefore;
+    this.points[toIdx] = toBefore;
 
     return hasWall;
   }
@@ -862,7 +894,7 @@ class BackgammonEngine {
 
     const destPoint = this.getPointFromPathIndex(color, pathIdx);
     if (this.isPointClosedFor(color, destPoint)) return false;
-    if (this.wouldCreateIllegalWall(color, destPoint)) return false;
+    if (this.wouldCreateIllegalWall(color, fromPoint, destPoint)) return false;
 
     return true;
   }
@@ -1301,6 +1333,7 @@ document.getElementById('btn-roll').addEventListener('click', () => {
   renderBoard();
   broadcastStateIfRemote(); // dés lancés, on synchronise l'adversaire
 });let pendingBonusAfterFourThree = null; // true si un choix de double bonus doit être proposé après le 4-3
+let inheritedFourThreeBonus = false; // true si le droit au bonus 4-3 a été transmis avec les dés hérités
 let playingInheritedDice = false; // true tant que les dés hérités obligatoires n'ont pas tous été joués
 
 function showBonusChoiceModal() {
@@ -1434,7 +1467,7 @@ function attemptMoveToPoint(targetPoint) {
   selectedOrigin = null;
 
   if (engine.gameOver) {
-    setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success');
+    setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success'); if (typeof showVictoryScreen === 'function') showVictoryScreen(engine.winner);
     renderBoard();
     return;
   }
@@ -1493,7 +1526,7 @@ function attemptBearOff(color) {
   selectedOrigin = null;
 
   if (engine.gameOver) {
-    setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success');
+    setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success'); if (typeof showVictoryScreen === 'function') showVictoryScreen(engine.winner);
     renderBoard();
     return;
   }
@@ -1543,7 +1576,7 @@ function attachDieHandlers() {
       selectedOrigin = null;
 
       if (engine.gameOver) {
-        setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success');
+        setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success'); if (typeof showVictoryScreen === 'function') showVictoryScreen(engine.winner);
         renderBoard();
         return;
       }
@@ -1560,6 +1593,15 @@ function checkForBlockedTurn() {
   if (remaining.length === 0) return;
   if (!engine.hasAnyLegalMove(color, remaining)) {
     setMessage(`${color === 'white' ? 'Blanc' : 'Noir'} ne peut jouer aucun des dés restants (${remaining.join(', ')}). Transfert à l'adversaire.`, 'warning');
+    // Si ce blocage survient sur un 4-3 avant même d'avoir pu en jouer une partie, et
+    // qu'un bonus était en jeu, ce droit au bonus se transmet aussi à l'adversaire qui
+    // hérite des dés — il jouera le 4-3, choisira le double, puis rejouera un tour
+    // complet supplémentaire, exactement comme si le combo avait été le sien.
+    if (pendingBonusAfterFourThree && remaining.length === engine.pendingDice.length &&
+        !engine.isFirstTurn[color] && !engine.extraTurnPending) {
+      inheritedFourThreeBonus = true;
+      pendingBonusAfterFourThree = null;
+    }
     // marquer tous les dés restants comme "à transférer" : on force la fin de tour
     finalizeTurnWithTransfer();
   }
@@ -1575,6 +1617,17 @@ function checkTurnCompletion() {
       playingInheritedDice = false;
       usedDiceIndices = new Set();
       engine.pendingDice = []; // évite que ces dés déjà joués semblent encore "en attente"
+
+      // Si le 4-3 hérité donnait droit à un bonus (choix d'un double + tour supplémentaire),
+      // ce droit se transmet aussi à celui qui vient de le jouer.
+      if (inheritedFourThreeBonus) {
+        inheritedFourThreeBonus = false;
+        setMessage(`Dé(s) hérité(s) joué(s) (4-3). Le bonus qui l'accompagnait est aussi hérité !`, 'success');
+        renderBoard();
+        showBonusChoiceModal();
+        if (typeof maybeTakeComputerTurn === 'function') maybeTakeComputerTurn();
+        return;
+      }
 
       // Si le double bloqué qui a généré ces dés hérités avait un complément en attente
       // (bonus), on le propose maintenant à celui qui vient de jouer les dés hérités.
@@ -1695,7 +1748,10 @@ document.getElementById('btn-undo-move').addEventListener('click', () => {
   engine.undo();
   usedDiceIndices = usedDiceHistory.pop() || new Set();
   selectedOrigin = null;
-  pendingBonusAfterFourThree = null; // sera re-détecté naturellement si on rejoue le 4 et 3
+  // Important : pendingBonusAfterFourThree n'est PAS réinitialisé ici. Ce statut est fixé
+  // une seule fois au moment du lancer de dés et n'est jamais recalculé en rejouant un
+  // coup — l'effacer ici ferait perdre le bonus définitivement dès qu'on annule un coup
+  // pendant un tour de 4-3.
   renderBoard();
   if (engine.pendingDice.length > 0) {
     attachDieHandlers();
@@ -2322,13 +2378,93 @@ function playOutComputerDice() {
   renderBoard();
 
   if (engine.gameOver) {
-    setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success');
+    setMessage(`${engine.winner === 'white' ? 'Blanc' : 'Noir'} a gagné la partie !`, 'success'); if (typeof showVictoryScreen === 'function') showVictoryScreen(engine.winner);
     return;
   }
 
   checkTurnCompletion();
   setTimeout(() => playOutComputerDice(), 1500);
 }
+
+// ------------------------------------------------------------
+// Écran de victoire avec confettis
+// ------------------------------------------------------------
+let confettiAnimationId = null;
+
+function launchConfetti() {
+  const canvas = document.getElementById('confetti-canvas');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const ctx = canvas.getContext('2d');
+
+  const colors = ['#b8863f', '#f5efe3', '#2f6fa8', '#e8ddc8', '#d3d3d3'];
+  const pieces = [];
+  const count = 140;
+  for (let i = 0; i < count; i++) {
+    pieces.push({
+      x: Math.random() * canvas.width,
+      y: -20 - Math.random() * canvas.height * 0.5,
+      size: 6 + Math.random() * 6,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      speedY: 2 + Math.random() * 3,
+      speedX: (Math.random() - 0.5) * 2,
+      rotation: Math.random() * 360,
+      rotationSpeed: (Math.random() - 0.5) * 10,
+    });
+  }
+
+  let elapsed = 0;
+  const duration = 4500;
+
+  function frame() {
+    elapsed += 16;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      p.y += p.speedY;
+      p.x += p.speedX;
+      p.rotation += p.rotationSpeed;
+      if (p.y > canvas.height + 20) {
+        p.y = -20;
+        p.x = Math.random() * canvas.width;
+      }
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate((p.rotation * Math.PI) / 180);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+      ctx.restore();
+    });
+    if (elapsed < duration) {
+      confettiAnimationId = requestAnimationFrame(frame);
+    } else {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+  }
+  if (confettiAnimationId) cancelAnimationFrame(confettiAnimationId);
+  frame();
+}
+
+function showVictoryScreen(winnerColor) {
+  const overlay = document.getElementById('victory-overlay');
+  const isWhite = winnerColor === 'white';
+  document.getElementById('victory-emoji').textContent = isWhite ? '⚪🏆' : '⚫🏆';
+  document.getElementById('victory-title').textContent = (isWhite ? 'Blanc' : 'Noir') + ' remporte la partie !';
+  const subtitle = vsComputerMode && winnerColor === computerColor
+    ? "L'ordinateur a gagné cette fois — la revanche t'attend."
+    : (vsComputerMode ? 'Bravo, tu as battu l\'ordinateur !' : 'Bien joué !');
+  document.getElementById('victory-subtitle').textContent = subtitle;
+  overlay.style.display = 'flex';
+  launchConfetti();
+}
+
+document.getElementById('btn-victory-newgame').addEventListener('click', () => {
+  document.getElementById('victory-overlay').style.display = 'none';
+  document.getElementById('btn-new-game').click();
+});
+document.getElementById('btn-victory-close').addEventListener('click', () => {
+  document.getElementById('victory-overlay').style.display = 'none';
+  if (confettiAnimationId) cancelAnimationFrame(confettiAnimationId);
+});
 
 buildBoard();
 const restored = loadGameState();
