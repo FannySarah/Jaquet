@@ -1633,10 +1633,15 @@ function checkTurnCompletion() {
       // (bonus), on le propose maintenant à celui qui vient de jouer les dés hérités.
       const revealed = engine.revealComplementIfNeeded();
       if (revealed) {
+        // On reste en mode "dés hérités" pour ce complément aussi : une fois ces dés
+        // joués, le joueur doit récupérer la main pour lancer SES PROPRES dés, pas
+        // passer le tour à l'adversaire comme une fin de tour normale.
+        playingInheritedDice = true;
         setMessage(`Dé(s) hérité(s) joué(s). Complément à 7 hérité aussi : ${engine.pendingDice.join(', ')}. Continue de jouer.`, 'success');
         renderBoard();
         const stillLegal = engine.hasAnyLegalMove(engine.currentPlayer, engine.pendingDice);
         if (!stillLegal) {
+          playingInheritedDice = false;
           setMessage(`Complément hérité : ${engine.pendingDice.join(', ')} — mais aucun coup légal possible. Transfert à l'adversaire.`, 'warning');
           finalizeTurnWithTransfer();
           return;
@@ -2183,21 +2188,38 @@ function evaluatePositionForAI(color) {
   if (pipDiff > 25) blockWeight = 0.35;
   else if (pipDiff < -25) blockWeight = 1.7;
 
+  // Un point n'a de valeur de blocage que si AU MOINS UN pion adverse restant n'a pas
+  // encore dépassé ce point — bloquer un endroit que tout l'adversaire a déjà quitté
+  // pour toujours (il ne peut jamais revenir en arrière) ne sert absolument à rien.
+  let minOpponentPathIdx = Infinity;
+  for (let p = 1; p <= 24; p++) {
+    const pt = engine.points[p - 1];
+    if (pt.color === opponent && pt.count > 0) {
+      const oppOwnPathIdx = engine.getPathIndex(opponent, p);
+      if (oppOwnPathIdx < minOpponentPathIdx) minOpponentPathIdx = oppOwnPathIdx;
+    }
+  }
+
   let blockBonus = 0;
   const closedByColor = new Array(25).fill(false);
+  const relevantClosedByColor = new Array(25).fill(false);
   for (let p = 1; p <= 24; p++) {
     const pt = engine.points[p - 1];
     if (pt.color === color && pt.count > 0) {
       closedByColor[p] = true;
       const oppPathIdx = engine.getPathIndex(opponent, p);
-      const earlyness = Math.max(0, 16 - oppPathIdx);
-      blockBonus += earlyness * 0.5;
-      if (engine.isFirstTurn[opponent]) {
-        const oppStart = opponent === 'white' ? 24 : 12;
-        const oppSpecialPos = engine.firstTurnPiecePos[opponent] !== null ? engine.firstTurnPiecePos[opponent] : oppStart;
-        const oppSpecialPathIdx = engine.getPathIndex(opponent, oppSpecialPos);
-        if (oppPathIdx > oppSpecialPathIdx && oppPathIdx - oppSpecialPathIdx <= 6) {
-          blockBonus += 8;
+      const stillRelevant = oppPathIdx > minOpponentPathIdx;
+      if (stillRelevant) {
+        relevantClosedByColor[p] = true;
+        const earlyness = Math.max(0, 16 - oppPathIdx);
+        blockBonus += earlyness * 0.5;
+        if (engine.isFirstTurn[opponent]) {
+          const oppStart = opponent === 'white' ? 24 : 12;
+          const oppSpecialPos = engine.firstTurnPiecePos[opponent] !== null ? engine.firstTurnPiecePos[opponent] : oppStart;
+          const oppSpecialPathIdx = engine.getPathIndex(opponent, oppSpecialPos);
+          if (oppPathIdx > oppSpecialPathIdx && oppPathIdx - oppSpecialPathIdx <= 6) {
+            blockBonus += 8;
+          }
         }
       }
     }
@@ -2210,7 +2232,7 @@ function evaluatePositionForAI(color) {
   let runLength = 0;
   for (let step = 0; step <= 24; step++) {
     const point = engine.getPointFromPathIndex(opponent, step % 24);
-    const isClosed = point >= 1 && point <= 24 && closedByColor[point];
+    const isClosed = point >= 1 && point <= 24 && relevantClosedByColor[point];
     if (isClosed) {
       runLength++;
     } else {
