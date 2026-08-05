@@ -1334,6 +1334,7 @@ document.getElementById('btn-roll').addEventListener('click', () => {
   broadcastStateIfRemote(); // dés lancés, on synchronise l'adversaire
 });let pendingBonusAfterFourThree = null; // true si un choix de double bonus doit être proposé après le 4-3
 let inheritedFourThreeBonus = false; // true si le droit au bonus 4-3 a été transmis avec les dés hérités
+let pendingRealTurnAfterInheritedBonus = false; // true si un vrai tour propre suit le tour supplémentaire d'un bonus hérité
 let playingInheritedDice = false; // true tant que les dés hérités obligatoires n'ont pas tous été joués
 
 function showBonusChoiceModal() {
@@ -1622,6 +1623,7 @@ function checkTurnCompletion() {
       // ce droit se transmet aussi à celui qui vient de le jouer.
       if (inheritedFourThreeBonus) {
         inheritedFourThreeBonus = false;
+        pendingRealTurnAfterInheritedBonus = true; // après le tour supplémentaire intégré, un vrai tour suivra
         setMessage(`Dé(s) hérité(s) joué(s) (4-3). Le bonus qui l'accompagnait est aussi hérité !`, 'success');
         renderBoard();
         showBonusChoiceModal();
@@ -1700,6 +1702,22 @@ function finalizeTurn() {
   // IMPORTANT : ne garder dans pendingDice que les dés réellement non utilisés,
   // sinon endTurnAndTransfer() croirait que tous les dés (même ceux déjà joués) sont à transférer.
   engine.pendingDice = engine.pendingDice.filter((_, i) => !usedDiceIndices.has(i));
+
+  // Cas spécial : ce tour était le tour supplémentaire intégré à un bonus 4-3 HÉRITÉ
+  // (pas gagné directement par ce joueur, mais transmis avec les dés d'un adversaire
+  // bloqué). Une fois ce tour supplémentaire terminé normalement (pas d'un NOUVEAU
+  // tour supplémentaire qui s'enchaînerait), le joueur a encore droit à SON PROPRE
+  // tour avant que la main ne passe réellement à l'adversaire.
+  if (pendingRealTurnAfterInheritedBonus && !engine.extraTurnPending && engine.pendingDice.length === 0) {
+    pendingRealTurnAfterInheritedBonus = false;
+    usedDiceIndices = new Set();
+    selectedOrigin = null;
+    setMessage(`Tour supplémentaire du bonus hérité terminé. ${endingColor === 'white' ? 'Blanc' : 'Noir'} a maintenant son propre tour — relance les dés.`, 'success');
+    renderBoard();
+    broadcastStateIfRemote();
+    if (typeof maybeTakeComputerTurn === 'function') maybeTakeComputerTurn();
+    return;
+  }
 
   const res = engine.endTurnAndTransfer();
   // Note : la phase "premier tour" (entrée en zone) n'est PAS réinitialisée ici.
